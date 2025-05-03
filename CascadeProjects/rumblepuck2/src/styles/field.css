@@ -1,0 +1,127 @@
+/* Field styles for RumblePuck */
+
+.app {
+  max-width: 1650px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+header {
+  text-align: center;
+  margin-bottom: 20px;
+  padding: 20px;
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+footer {
+  text-align: center;
+  margin-top: 20px;
+  padding: 10px;
+  font-size: 14px;
+  color: #666;
+}
+
+/* Zone styles */
+.zone {
+  position: absolute;
+  height: 100%;
+}
+
+.close-zone {
+  left: 0;
+  width: 600px;
+  background-color: rgba(231, 76, 60, 0.1);
+  border-right: 2px dashed rgba(231, 76, 60, 0.5);
+}
+
+.mid-zone {
+  left: 600px;
+  width: 400px;
+  background-color: rgba(52, 152, 219, 0.1);
+  border-right: 2px dashed rgba(52, 152, 219, 0.5);
+}
+
+.far-zone {
+  left: 1000px;
+  width: 300px;
+  background-color: rgba(46, 204, 113, 0.1);
+  border-right: 2px dashed rgba(46, 204, 113, 0.5);
+}
+
+.hazard-zone {
+  left: 1300px;
+  width: 300px;
+  background-color: rgba(231, 76, 60, 0.2);
+}
+
+/* Power bar styles */
+.power-bar-container {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 400px;
+  height: 20px;
+  background-color: #333;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.power-bar {
+  height: 100%;
+  background: linear-gradient(to right, green, yellow, red);
+  width: 0%;
+  transition: width 0.05s linear;
+}
+
+/* Puck styles */
+.puck {
+  position: absolute;
+  border-radius: 50%;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.puck.bruiser {
+  background-color: var(--bruiser-color);
+}
+
+.puck.tactician {
+  background-color: var(--tactician-color);
+}
+
+.puck.sniper {
+  background-color: var(--sniper-color);
+}
+
+/* Trajectory prediction */
+.trajectory {
+  position: absolute;
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* Debug overlay */
+.debug-overlay {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background-color: rgba(255, 255, 255, 0.8);
+  padding: 10px;
+  border-radius: 5px;
+  font-family: monospace;
+  font-size: 12px;
+  z-index: 100;
+}
+
+/* Responsive adjustments */
+@media (max-width: 1650px) {
+  .app {
+    padding: 10px;
+  }
+  
+  .physics-sandbox {
+    padding: 10px;
+  }
+}
