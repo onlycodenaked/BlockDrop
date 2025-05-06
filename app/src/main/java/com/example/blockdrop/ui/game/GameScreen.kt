@@ -18,12 +18,19 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.IntOffset
 import android.graphics.Paint
+import com.example.blockdrop.ui.effects.calculateScreenShakeOffset
+import com.example.blockdrop.ui.effects.rememberScreenShake
+import com.example.blockdrop.ui.effects.rememberGlowPulse
+import com.example.blockdrop.ui.effects.calculateGlowPulseIntensity
+import com.example.blockdrop.ui.effects.triggerScreenShake
+import com.example.blockdrop.ui.effects.triggerGlowPulse
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -65,6 +72,12 @@ fun GameScreen(
     // Flag to require a new drag gesture for each new piece
     var requireNewDragGesture by remember { mutableStateOf(false) }
     
+    // Visual effects
+    val screenShake = rememberScreenShake()
+    val glowPulse = rememberGlowPulse()
+    val shakeOffset = calculateScreenShakeOffset(screenShake)
+    val glowIntensity = calculateGlowPulseIntensity(glowPulse)
+    
     // Track drag gesture state
     var dragStartX by remember { mutableStateOf(0f) }
     var dragStartY by remember { mutableStateOf(0f) }
@@ -81,7 +94,7 @@ fun GameScreen(
     fun resetDragState() {
         accumulatedHorizontalDrag = 0f
         accumulatedVerticalDrag = 0f
-        currentDragDirection = ""
+        currentDragDirection = "" // Reset direction for new gesture
         isAcceleratingDrop = false
     }
     
@@ -105,6 +118,18 @@ fun GameScreen(
                 // Require the user to lift finger and start a new drag for this piece
                 requireNewDragGesture = true
                 lastTetriminoId = tetriminoId
+                
+                // Trigger visual effects for new tetrimino
+                if (tetrimino.powerUp != null) {
+                    // Trigger glow effect for power-up tetriminos
+                    val color = when (tetrimino.powerUp) {
+                        PowerUpType.BOMB -> Color(0xFFFF5555) // Red for bomb
+                        PowerUpType.LINE_CLEAR -> Color(0xFF55FFFF) // Cyan for line clear
+                        PowerUpType.GHOST -> Color(0xFFFFFF55) // Yellow for ghost
+                        else -> Color.White
+                    }
+                    triggerGlowPulse(glowPulse, color, 0.5f)
+                }
             } else if (tetriminoId != lastTetriminoId) {
                 // Update the ID but don't reset (this is just movement of the same piece)
                 lastTetriminoId = tetriminoId
@@ -112,15 +137,48 @@ fun GameScreen(
         }
     }
     
-    // Apply screen shake effect
-    val screenShakeOffset = viewModel.screenShake.offset
+    // Handle line clears
+    LaunchedEffect(score.value) {
+        // When score changes, it might be due to a line clear
+        // Trigger screen shake effect for line clears
+        triggerScreenShake(screenShake, 5f, 5)
+    }
     
     // Main game layout
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(DarkBackground)
-            .offset { IntOffset(screenShakeOffset.x.toInt(), screenShakeOffset.y.toInt()) }
+            // Add keyboard listener
+            .onKeyEvent { keyEvent ->
+                if (gameState == GameState.Running) {
+                    when {
+                        // Rotate on Up arrow
+                        (keyEvent.type == KeyEventType.KeyDown && keyEvent.key == Key.DirectionUp) -> {
+                            viewModel.rotate()
+                            true
+                        }
+                        // Move left on Left arrow
+                        (keyEvent.type == KeyEventType.KeyDown && keyEvent.key == Key.DirectionLeft) -> {
+                            viewModel.moveLeft()
+                            true
+                        }
+                        // Move right on Right arrow
+                        (keyEvent.type == KeyEventType.KeyDown && keyEvent.key == Key.DirectionRight) -> {
+                            viewModel.moveRight()
+                            true
+                        }
+                        // Soft drop on Down arrow
+                        (keyEvent.type == KeyEventType.KeyDown && keyEvent.key == Key.DirectionDown) -> {
+                            viewModel.softDrop()
+                            true
+                        }
+                        else -> false
+                    }
+                } else {
+                    false
+                }
+            }
     ) {
         Column(
             modifier = Modifier
@@ -431,28 +489,69 @@ fun GameGrid(
                 height = with(density) { totalGridHeight.toDp() }
             )
         ) {
-            // Draw grid cells
-            drawGrid(grid, cellSize)
-            
-            // Draw the ghost tetrimino
-            ghostPosition?.let { ghostPos ->
-                drawGhostTetrimino(currentTetrimino, ghostPos, cellSize)
-            }
-            
-            // Draw the current tetrimino
-            // Draw current tetrimino
-            currentTetrimino?.let { tetrimino ->
-                val isPowerUp = tetrimino.powerUp != null
-                tetrimino.getBlocks().forEach { position ->
-                    if (position.y >= 0) { // Only draw blocks that are within the visible grid
-                        drawBlock(position.x, position.y, cellSize, tetrimino.color, isPowerUp)
+            // Apply screen shake effect
+            translate(shakeOffset.x, shakeOffset.y) {
+                // Draw grid lines
+                drawGridLines(cellSize)
+                
+                // Draw placed blocks
+                grid?.let {
+                    for (y in 0 until it.height) {
+                        for (x in 0 until it.width) {
+                            val color = it.getColorAt(Position(x, y))
+                            if (color != null) {
+                                drawBlock(x, y, cellSize, color)
+                            }
+                        }
                     }
                 }
-            }
-            
-            // Draw orbs (last, so they appear on top of everything)
-            orbs.forEach { orb ->
-                drawOrb(orb.position.x, orb.position.y, cellSize, orb.color, orb.multiplier)
+                
+                // Draw ghost blocks
+                ghostPosition?.let { ghostPos ->
+                    currentTetrimino?.let { tetrimino ->
+                        // Create a ghost tetrimino at the ghost position
+                        val ghostTetrimino = tetrimino.copy(position = ghostPos)
+                        
+                        // Draw each block of the ghost tetrimino
+                        ghostTetrimino.getBlocks().forEach { position ->
+                            drawGhostBlock(position.x, position.y, cellSize, tetrimino.color)
+                        }
+                    }
+                }
+                
+                // Draw current tetrimino
+                currentTetrimino?.let { tetrimino ->
+                    val isPowerUp = tetrimino.powerUp != null
+                    tetrimino.getBlocks().forEach { position ->
+                        if (position.y >= 0) { // Only draw blocks that are within the visible grid
+                            drawBlock(position.x, position.y, cellSize, tetrimino.color, isPowerUp)
+                        }
+                    }
+                }
+                
+                // Draw orbs (last, so they appear on top of everything)
+                orbs.forEach { orb ->
+                    drawOrb(orb, cellSize)
+                }
+                
+                // Draw particles
+                viewModel.particleSystem.getParticles().forEach { particle ->
+                    rotate(particle.rotation) {
+                        drawCircle(
+                            color = particle.color.copy(alpha = particle.alpha),
+                            radius = particle.size,
+                            center = particle.position
+                        )
+                    }
+                }
+                
+                // Draw glow effect overlay if active
+                if (glowIntensity > 0) {
+                    drawRect(
+                        color = glowPulse.value.color.copy(alpha = glowIntensity * 0.2f),
+                        size = size
+                    )
+                }
             }
         }
     }
@@ -499,31 +598,35 @@ private fun DrawScope.drawBlock(x: Int, y: Int, cellSize: Float, color: Color, i
         
         // Draw power-up indicator if this is a power-up block
         if (isPowerUp) {
-            // Draw a star in the center of the block
+            // Draw a star symbol for power-up tetriminos
             val centerX = x * cellSize + cellSize / 2
             val centerY = y * cellSize + cellSize / 2
-            val starRadius = blockSize / 4
+            val radius = cellSize / 4
             
-            // Draw 5-point star
-            val path = androidx.compose.ui.graphics.Path()
+            // Draw a simple star
+            val starPath = android.graphics.Path()
             for (i in 0 until 10) {
-                val radius = if (i % 2 == 0) starRadius else starRadius / 2
-                val angle = Math.PI * i / 5 - Math.PI / 2
-                val px = centerX + (radius * Math.cos(angle)).toFloat()
-                val py = centerY + (radius * Math.sin(angle)).toFloat()
+                val angle = Math.PI * i / 5
+                val r = if (i % 2 == 0) radius else radius / 2
+                val px = centerX + r * Math.cos(angle).toFloat()
+                val py = centerY + r * Math.sin(angle).toFloat()
                 
                 if (i == 0) {
-                    path.moveTo(px, py)
+                    starPath.moveTo(px, py)
                 } else {
-                    path.lineTo(px, py)
+                    starPath.lineTo(px, py)
                 }
             }
-            path.close()
+            starPath.close()
+            
+            // Draw the star with a pulsing effect
+            val pulseScale = 1f + (Math.sin(System.currentTimeMillis() / 200f) * 0.1f)
             
             // Draw the star
             drawPath(
-                path = path,
-                color = Color.White.copy(alpha = 0.8f)
+                path = starPath.asComposePath(),
+                color = Color.White.copy(alpha = 0.8f),
+                style = Stroke(width = 1f * pulseScale)
             )
         }
     }
