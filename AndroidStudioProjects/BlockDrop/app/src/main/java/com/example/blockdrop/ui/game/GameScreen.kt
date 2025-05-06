@@ -47,6 +47,7 @@ fun GameScreen(
     val currentTetrimino by viewModel.currentTetrimino.collectAsState()
     val nextTetrimino by viewModel.nextTetrimino.collectAsState()
     val ghostPosition by viewModel.ghostPosition.collectAsState()
+    val visibleBlocks by viewModel.visibleBlocks.collectAsState()
     
     // Keep track of the current tetrimino to detect changes
     var lastTetriminoId by remember { mutableStateOf("") }
@@ -205,6 +206,8 @@ fun GameScreen(
                     grid = grid,
                     currentTetrimino = currentTetrimino,
                     ghostPosition = ghostPosition,
+                    visibleBlocks = visibleBlocks,
+                    gameState = gameState,
                     modifier = Modifier
                         .wrapContentSize()
                         .pointerInput(Unit) {
@@ -358,6 +361,8 @@ fun GameGrid(
     grid: com.example.blockdrop.core.model.Grid?,
     currentTetrimino: Tetrimino?,
     ghostPosition: Position?,
+    visibleBlocks: List<Position> = emptyList(),
+    gameState: GameState = GameState.NotStarted,
     modifier: Modifier = Modifier
 ) {
     // Calculate cell size based on available width
@@ -403,23 +408,40 @@ fun GameGrid(
                 }
             }
             
-            // Draw ghost tetrimino
-            currentTetrimino?.let { tetrimino ->
-                ghostPosition?.let { ghostPos ->
-                    // Create a copy of the current tetrimino with the ghost position
-                    val ghostTetrimino = tetrimino.copy(position = ghostPos)
-                    
-                    // Draw the ghost blocks
-                    ghostTetrimino.getBlocks().forEach { pos ->
-                        drawGhostBlock(pos.x, pos.y, cellSize, tetrimino.color)
+            // Draw ghost tetrimino (only in running state)
+            if (gameState == GameState.Running) {
+                currentTetrimino?.let { tetrimino ->
+                    ghostPosition?.let { ghostPos ->
+                        // Create a copy of the current tetrimino with the ghost position
+                        val ghostTetrimino = tetrimino.copy(position = ghostPos)
+                        
+                        // Draw the ghost blocks
+                        ghostTetrimino.getBlocks().forEach { pos ->
+                            drawGhostBlock(pos.x, pos.y, cellSize, tetrimino.color)
+                        }
                     }
                 }
             }
             
-            // Draw current tetrimino
-            currentTetrimino?.let { tetrimino ->
-                tetrimino.getBlocks().forEach { pos ->
-                    drawBlock(pos.x, pos.y, cellSize, tetrimino.color)
+            // Draw current tetrimino (in running or paused state)
+            if (gameState == GameState.Running || gameState == GameState.Paused) {
+                currentTetrimino?.let { tetrimino ->
+                    tetrimino.getBlocks().forEach { pos ->
+                        drawBlock(pos.x, pos.y, cellSize, tetrimino.color)
+                    }
+                }
+            }
+            
+            // Draw visible blocks in game over state
+            if (gameState == GameState.GameOver && visibleBlocks.isNotEmpty()) {
+                // Get the color from the current tetrimino (should be the same for all blocks)
+                val color = currentTetrimino?.color ?: Color.White
+                
+                // Draw only the visible blocks
+                visibleBlocks.forEach { pos ->
+                    if (pos.y >= 0) { // Only draw blocks that are within the visible grid
+                        drawBlock(pos.x, pos.y, cellSize, color)
+                    }
                 }
             }
         }

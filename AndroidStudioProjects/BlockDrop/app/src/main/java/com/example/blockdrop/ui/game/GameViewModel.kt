@@ -39,6 +39,10 @@ class GameViewModel : ViewModel() {
     private val _currentTetrimino = MutableStateFlow<Tetrimino?>(null)
     val currentTetrimino: StateFlow<Tetrimino?> = _currentTetrimino.asStateFlow()
     
+    // Visible blocks for game over state
+    private val _visibleBlocks = MutableStateFlow<List<Position>>(emptyList())
+    val visibleBlocks: StateFlow<List<Position>> = _visibleBlocks.asStateFlow()
+    
     // Next tetrimino (for preview)
     private val _nextTetrimino = MutableStateFlow<Tetrimino?>(null)
     val nextTetrimino: StateFlow<Tetrimino?> = _nextTetrimino.asStateFlow()
@@ -168,7 +172,20 @@ class GameViewModel : ViewModel() {
      */
     private fun updateUIState() {
         _gridState.value = gameEngine.getGrid()
-        _currentTetrimino.value = gameEngine.getCurrentTetrimino()
+        
+        // Handle the current tetrimino differently based on game state
+        if (gameState.value == GameState.GameOver) {
+            // In game over state, we don't want to show the full tetrimino
+            // Instead, we'll use the visible blocks method to show only the
+            // parts of the tetrimino that are within bounds
+            _visibleBlocks.value = gameEngine.getVisibleBlocks()
+            _currentTetrimino.value = null // Don't render the full tetrimino
+        } else {
+            // Normal gameplay - show the full tetrimino
+            _currentTetrimino.value = gameEngine.getCurrentTetrimino()
+            _visibleBlocks.value = emptyList()
+        }
+        
         _nextTetrimino.value = gameEngine.getNextTetrimino()
     }
     

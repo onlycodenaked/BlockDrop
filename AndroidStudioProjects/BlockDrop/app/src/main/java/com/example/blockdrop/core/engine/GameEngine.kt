@@ -61,12 +61,14 @@ class GameEngine {
         // Generate the next tetrimino
         nextTetrimino = generateRandomTetrimino()
         
-        // Calculate ghost position
-        updateGhostPosition()
-        
         // Check if game is over (can't place the new tetrimino)
         if (currentTetrimino != null && !grid.canPlace(currentTetrimino!!)) {
+            // Game over - don't update ghost position
+            // This allows the piece to remain partially off-screen
             _gameState.value = GameState.GameOver
+        } else {
+            // Only update ghost position if the game is still running
+            updateGhostPosition()
         }
     }
     
@@ -108,6 +110,17 @@ class GameEngine {
             position.x >= 0 && position.x < grid.width && // Within horizontal bounds
             (position.y < 0 || grid.isEmpty(position)) // Above top or empty cell
         }
+    }
+    
+    /**
+     * Get the blocks of the current tetrimino that are within the grid bounds
+     * This is used for rendering the final position at game over
+     */
+    fun getVisibleBlocks(): List<Position> {
+        return currentTetrimino?.getBlocks()?.filter { position ->
+            position.y >= 0 && position.y < grid.height &&
+            position.x >= 0 && position.x < grid.width
+        } ?: emptyList()
     }
     
     /**
