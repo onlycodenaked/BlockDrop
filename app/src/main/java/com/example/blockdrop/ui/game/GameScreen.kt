@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
 import android.graphics.Paint
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -111,41 +112,15 @@ fun GameScreen(
         }
     }
     
+    // Apply screen shake effect
+    val screenShakeOffset = viewModel.screenShake.offset
+    
     // Main game layout
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(DarkBackground)
-            // Add keyboard listener
-            .onKeyEvent { keyEvent ->
-                if (gameState == GameState.Running) {
-                    when {
-                        // Rotate on Up arrow
-                        (keyEvent.type == KeyEventType.KeyDown && keyEvent.key == Key.DirectionUp) -> {
-                            viewModel.rotate()
-                            true
-                        }
-                        // Move left on Left arrow
-                        (keyEvent.type == KeyEventType.KeyDown && keyEvent.key == Key.DirectionLeft) -> {
-                            viewModel.moveLeft()
-                            true
-                        }
-                        // Move right on Right arrow
-                        (keyEvent.type == KeyEventType.KeyDown && keyEvent.key == Key.DirectionRight) -> {
-                            viewModel.moveRight()
-                            true
-                        }
-                        // Soft drop on Down arrow
-                        (keyEvent.type == KeyEventType.KeyDown && keyEvent.key == Key.DirectionDown) -> {
-                            viewModel.softDrop()
-                            true
-                        }
-                        else -> false
-                    }
-                } else {
-                    false
-                }
-            }
+            .offset { IntOffset(screenShakeOffset.x.toInt(), screenShakeOffset.y.toInt()) }
     ) {
         Column(
             modifier = Modifier
@@ -456,34 +431,15 @@ fun GameGrid(
                 height = with(density) { totalGridHeight.toDp() }
             )
         ) {
-            // Draw grid lines
-            drawGridLines(cellSize)
+            // Draw grid cells
+            drawGrid(grid, cellSize)
             
-            // Draw placed blocks
-            grid?.let {
-                for (y in 0 until it.height) {
-                    for (x in 0 until it.width) {
-                        val color = it.getColorAt(Position(x, y))
-                        if (color != null) {
-                            drawBlock(x, y, cellSize, color)
-                        }
-                    }
-                }
-            }
-            
-            // Draw ghost blocks
+            // Draw the ghost tetrimino
             ghostPosition?.let { ghostPos ->
-                currentTetrimino?.let { tetrimino ->
-                    // Create a ghost tetrimino at the ghost position
-                    val ghostTetrimino = tetrimino.copy(position = ghostPos)
-                    
-                    // Draw each block of the ghost tetrimino
-                    ghostTetrimino.getBlocks().forEach { position ->
-                        drawGhostBlock(position.x, position.y, cellSize, tetrimino.color)
-                    }
-                }
+                drawGhostTetrimino(currentTetrimino, ghostPos, cellSize)
             }
             
+            // Draw the current tetrimino
             // Draw current tetrimino
             currentTetrimino?.let { tetrimino ->
                 val isPowerUp = tetrimino.powerUp != null

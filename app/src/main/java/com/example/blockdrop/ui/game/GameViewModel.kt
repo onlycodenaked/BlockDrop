@@ -1,25 +1,42 @@
 package com.example.blockdrop.ui.game
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.compose.ui.geometry.Offset
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.blockdrop.core.audio.SoundEffect
+import com.example.blockdrop.core.audio.SoundManager
 import com.example.blockdrop.core.engine.GameEngine
 import com.example.blockdrop.core.engine.GameState
 import com.example.blockdrop.core.model.Grid
 import com.example.blockdrop.core.model.Orb
 import com.example.blockdrop.core.model.Position
+import com.example.blockdrop.core.model.PowerUpType
 import com.example.blockdrop.core.model.Tetrimino
+import com.example.blockdrop.ui.effects.ParticleSystem
+import com.example.blockdrop.ui.effects.ScreenShake
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
  * ViewModel for the game screen that manages UI state and user interactions
  */
-class GameViewModel : ViewModel() {
+class GameViewModel(application: Application) : AndroidViewModel(application) {
+    // Particle system for visual effects
+    val particleSystem = ParticleSystem()
+    
+    // Screen shake effect
+    val screenShake = ScreenShake()
+    
+    // Sound manager
+    private val soundManager = SoundManager(application.applicationContext)
+    
+    // Last update time for delta time calculation
+    private var lastUpdateTime = System.currentTimeMillis()
     // Game engine
     private val gameEngine = GameEngine()
     
@@ -65,6 +82,10 @@ class GameViewModel : ViewModel() {
     private var dropSpeed = 800L
     
     init {
+        // Initialize sound manager
+        soundManager.initialize()
+        soundManager.startMusic()
+        
         // Update the UI state whenever the game state changes
         viewModelScope.launch {
             gameEngine.gameState.collect { state ->
@@ -84,6 +105,9 @@ class GameViewModel : ViewModel() {
                 adjustDropSpeedForLevel()
             }
         }
+        
+        // Start the effect update loop
+        startEffectsUpdateLoop()
     }
     
     /**
@@ -219,10 +243,188 @@ class GameViewModel : ViewModel() {
     }
     
     /**
-     * Clean up when the ViewModel is cleared
+     * Start the effects update loop
+     */
+    private fun startEffectsUpdateLoop() {
+        viewModelScope.launch {
+            while (true) {
+                val currentTime = System.currentTimeMillis()
+                val deltaTime = (currentTime - lastUpdateTime) / 1000f
+                lastUpdateTime = currentTime
+                
+                // Update particle system
+                particleSystem.update(deltaTime)
+                
+                // Update screen shake
+                screenShake.update(deltaTime)
+                
+                delay(16) // ~60fps
+            }
+        }
+    }
+    
+    /**
+     * Update game state
+     */
+    private fun update() {
+        val previousScore = gameEngine.score
+        val previousLevel = gameEngine.level
+        val previousOrbs = gameEngine.grid.orbs.toList()
+        
+        val result = gameEngine.update()
+        
+        // Update state flows with new game state
+        _score.value = gameEngine.score
+        _multiplier.value = gameEngine.multiplier
+        _multiplierTimeRemaining.value = gameEngine.multiplierTimeRemaining / gameEngine.MULTIPLIER_DURATION
+        _level.value = gameEngine.level
+        _gridState.value = gameEngine.grid.copy()
+        _currentTetrimino.value = gameEngine.currentTetrimino?.copy()
+        _nextTetrimino.value = gameEngine.nextTetrimino?.copy()
+        _ghostPosition.value = gameEngine.calculateGhostPosition()
+        _orbs.value = gameEngine.grid.orbs.toList()
+        
+        // Handle visual and sound effects
+        if (result.linesCleared > 0) {
+            // Play line clear sound
+            soundManager.playSound(SoundEffect.LINE_CLEAR)
+            
+            // Create line clear particle effects
+            val cellSize = 30f // Approximate cell size
+            val gridWidth = gameEngine.grid.width * cellSize
+            
+            for (line in result.clearedLines) {
+                val y = line * cellSize + cellSize / 2
+                particleSystem.createLineClearEffect(
+                    y = y,
+                    width = gridWidth,
+                    color = when {
+                        result.linesCleared >= 4 -> com.example.blockdrop.ui.theme.NeonPink
+                        result.linesCleared >= 2 -> com.example.blockdrop.ui.theme.NeonBlue
+                        else -> com.example.blockdrop.ui.theme.NeonGreen
+                    }
+                )
+            }
+            
+            // Add screen shake based on number of lines cleared
+            val shakeIntensity = when {
+                result.linesCleared >= 4 -> 0.8f
+                result.linesCleared >= 2 -> 0.5f
+                else -> 0.3f
+            }
+            screenShake.shake(shakeIntensity, 0.3f)
+        }
+        
+        // Check if any orbs were collected
+        val currentOrbs = gameEngine.grid.orbs.toList()
+        if (previousOrbs.size > currentOrbs.size) {
+            // Find collected orbs
+            val collectedOrbs = previousOrbs.filter { orb -> 
+                !currentOrbs.any { it.position == orb.position } 
+            }
+            
+            // Create effects for each collected orb
+            collectedOrbs.forEach { orb ->
+                val cellSize = 30f // Approximate cell size
+                val x = orb.position.x * cellSize + cellSize / 2
+                val y = orb.position.y * cellSize + cellSize / 2
+                
+                // Play orb collection sound
+                soundManager.playSound(SoundEffect.ORB_COLLECT)
+                
+                // Create particle effect
+                particleSystem.createOrbCollectionEffect(
+                    position = Offset(x, y),
+                    color = when (orb.type) {
+                        Orb.OrbType.SMALL -> com.example.blockdrop.ui.theme.NeonGreen
+                        Orb.OrbType.MEDIUM -> com.example.blockdrop.ui.theme.NeonBlue
+                        Orb.OrbType.LARGE -> com.example.blockdrop.ui.theme.NeonPink
+                    }
+                )
+            }
+        }
+        
+        // Check if a power-up was used
+        if (result.powerUpUsed) {
+            // Play power-up sound and create effects
+            when (result.powerUpType) {
+                PowerUpType.BOMB -> {
+                    soundManager.playSound(SoundEffect.BOMB_EXPLODE)
+                    
+                    // Create explosion effect at the center of the bomb
+                    val cellSize = 30f
+                    val bombCenter = result.powerUpPosition?.let { pos -> 
+                        Offset(
+                            (pos.x + 1) * cellSize,
+                            (pos.y + 1) * cellSize
+                        )
+                    } ?: Offset(
+                        gameEngine.grid.width * cellSize / 2,
+                        gameEngine.grid.height * cellSize / 2
+                    )
+                    
+                    particleSystem.createExplosion(
+                        position = bombCenter,
+                        color = com.example.blockdrop.ui.theme.NeonPink,
+                        particleCount = 50
+                    )
+                    
+                    // Add strong screen shake
+                    screenShake.shake(1.0f, 0.5f)
+                }
+                PowerUpType.LINE_CLEAR -> {
+                    soundManager.playSound(SoundEffect.POWER_UP)
+                    
+                    // Screen shake
+                    screenShake.shake(0.6f, 0.4f)
+                }
+                PowerUpType.GHOST -> {
+                    soundManager.playSound(SoundEffect.POWER_UP)
+                }
+                null -> { /* No power-up */ }
+            }
+        }
+        
+        // Check if level increased
+        if (gameEngine.level > previousLevel) {
+            soundManager.playSound(SoundEffect.LEVEL_UP)
+        }
+        
+        // Update game state
+        if (result.gameOver) {
+            gameState.value = GameState.GAME_OVER
+            soundManager.playSound(SoundEffect.GAME_OVER)
+        }
+        
+        // Update drop speed based on level
+        dropSpeed = calculateDropDelay(gameEngine.level)
+    }
+    
+    /**
+     * Clean up resources when ViewModel is cleared
      */
     override fun onCleared() {
         super.onCleared()
-        stopGameLoop()
+        gameLoopJob?.cancel()
+        soundManager.release()
+    }
+    
+    /**
+     * Sound settings
+     */
+    fun setSoundEnabled(enabled: Boolean) {
+        soundManager.setSoundEnabled(enabled)
+    }
+    
+    fun setMusicEnabled(enabled: Boolean) {
+        soundManager.setMusicEnabled(enabled)
+    }
+    
+    fun setSoundVolume(volume: Float) {
+        soundManager.setSoundVolume(volume)
+    }
+    
+    fun setMusicVolume(volume: Float) {
+        soundManager.setMusicVolume(volume)
     }
 }

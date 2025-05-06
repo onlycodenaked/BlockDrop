@@ -1,0 +1,16 @@
+This file is a placeholder for the sound files that will be added to the game.
+
+The following sound files will be needed:
+- move.mp3: Sound for moving tetrimino left/right
+- rotate.mp3: Sound for rotating tetrimino
+- drop.mp3: Sound for hard dropping tetrimino
+- line_clear.mp3: Sound for clearing lines
+- level_up.mp3: Sound for leveling up
+- game_over.mp3: Sound for game over
+- menu_select.mp3: Sound for menu selection
+- bomb_explode.mp3: Sound for bomb power-up
+- orb_collect.mp3: Sound for collecting orbs
+- power_up.mp3: Sound for power-up activation
+- background_music.mp3: Background music for the game
+
+These files should be placed in the res/raw directory.
